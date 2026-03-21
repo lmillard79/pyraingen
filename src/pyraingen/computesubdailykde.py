@@ -24,18 +24,16 @@ def computeSubDailyKDE(sampleSize):
     #   2021-09-16
 
     sampleSize = int(sampleSize)
-    sampleRange = sampleSize + 1
     
-    probVector = np.zeros((sampleSize))
-    runSum = float(0)
+    probVector = np.zeros(sampleSize)
+    runSum = 0.0
 
-    for loopComp in range(1, sampleRange):
-        probVector[(loopComp-1)] = 1/(loopComp)
-        runSum +=probVector[(loopComp-1)]
+    for loopComp in range(sampleSize):
+        probVector[loopComp] = 1.0 / (loopComp + 1)
+        runSum += probVector[loopComp]
 
     probVector[0] = probVector[0] / runSum
     for loopComp in range(1, sampleSize):
-        probVector[loopComp] = (probVector[(loopComp-1)] + 
-        (probVector[loopComp] / runSum))
+        probVector[loopComp] = probVector[loopComp - 1] + (probVector[loopComp] / runSum)
 
     return probVector

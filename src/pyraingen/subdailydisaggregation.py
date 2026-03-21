@@ -303,7 +303,7 @@ def subDailyDisaggregation(targetDailyRain, param,
             #
             # First check if we found at least param.maxNearNeighb, if so no
             # futher action is required.
-            currProbSampleVec = probSampleVecFull
+            currProbSampleVec = np.copy(probSampleVecFull)
             if fragFoundCounter <= param['maxNearNeighb']:
                 currProbSampleVec[0:fragFoundCounter] = (
                     computeSubDailyKDE(fragFoundCounter)

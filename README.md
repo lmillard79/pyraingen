@@ -19,6 +19,29 @@ from pyraingen.regionalisedsubdailysim import regionalisedsubdailysim
 from pyraingen.ifdcond import ifdcond
 ```
 
+### ⚡ Bypassing Fortran with SILO or User Data
+
+You can now bypass the internal Fortran daily rainfall generator by supplying your own daily rainfall data (e.g., from BOM gauges or AWAP) or by fetching it directly from the **SILO API**. This allows for a pure-Python workflow:
+
+```python
+from pyraingen.regionalisedsubdailysim import regionalisedsubdailysim
+from pyraingen.silo import get_silo_point_data, prepare_silo_for_pyraingen
+
+# 1. Fetch daily data from SILO
+silo_df = get_silo_point_data(site="066062", start_date="20000101", end_date="20101231", email="your@email.com")
+daily_rain = prepare_silo_for_pyraingen(silo_df, 2000, 2010)
+
+# 2. Run disaggregation using the supplied data (genSeqOption=5)
+regionalisedsubdailysim(
+    fnameInput=None,
+    pathSubDaily=path_to_pluviographs,
+    targetIndex=66062,
+    suppliedDailyRain=daily_rain,
+    genSeqOption=5,
+    nSims=1
+)
+```
+
 Go to [`pyraingen.readthedocs.io`](https://pyraingen.readthedocs.io) for further documentation.
 
 ## Contributing

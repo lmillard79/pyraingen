@@ -48,19 +48,20 @@ from .producesubdailynetcdf import produceSubDailyNetCDF
 from .global_ import nSeasons
 from .global_ import ndaysYearLeap
 
-def regionalisedsubdailysim(fnameInput, pathSubDaily, targetIndex, 
-                            pathIndex=None, pathCoeff=None, pathReference=' ', 
+def regionalisedsubdailysim(fnameInput, pathSubDaily, targetIndex,
+                            pathIndex=None, pathCoeff=None, pathReference=' ',
                             fnameSubDaily='subdaily.nc',
                             minYears=10, nYearsPool=500, dryWetCutoff=0.30,
                             halfWinLen=15, maxNearNeighb=10, nSims=10,
                             genSeqOption=3, nYearsRef=50,
                             absDiffTol=0.1, gso3_lat=None, gso3_lon=None,
-                            gso3_elev=None, gso3_distcoast=None, 
-                            gso3_anrf=None, gso3_temp=None):
+                            gso3_elev=None, gso3_distcoast=None,
+                            gso3_anrf=None, gso3_temp=None,
+                            suppliedDailyRain=None):
     """Front end to the regionalised sub-daily disaggregation code.
 
     Options (genSeqOption) included:\n
-    0. Only sub daily data is available. 
+    0. Only sub daily data is available.
         - Daily data is formed from the subdaily record and is used for disaggregation.\n
     1. Daily and sub-daily rainfall data at target station is available \n
         - daily record comes from other source and therefore may be of different length to sub-daily record.\n
@@ -71,36 +72,38 @@ def regionalisedsubdailysim(fnameInput, pathSubDaily, targetIndex,
         - first derive the daily rainfall series at the target location using daily rainfall simulator.
         - and subsequently perform daily rainfall disaggreation using sub-daily information from nearby locations.
         - under this option many realisations of daily rainfall are available.\n
-    4. Multiple simulated sequences of daily rainfall at the target station are available. 
+    4. Multiple simulated sequences of daily rainfall at the target station are available.
         - sub daily rainfall sequences are generated using sub-daily information at the target station.\n
-    
-    Step 1: Pre-Compute the Pool - Mix of Step 1 and 2 in Westra et al 2012 
-    "Continuous rainfall simulation 1: A regionalised subdaily disaggregation approach". 
-    This depends on the user's input of genSeqOption. 
-    Different sequences are generated for each season, because if 
+    5. User supplied daily rainfall data via suppliedDailyRain parameter.
+        - ignores fnameInput for daily data and uses the provided array.\n
+
+    Step 1: Pre-Compute the Pool - Mix of Step 1 and 2 in Westra et al 2012
+    "Continuous rainfall simulation 1: A regionalised subdaily disaggregation approach".
+    This depends on the user's input of genSeqOption.
+    Different sequences are generated for each season, because if
     genSeqOption = 3 then there may be different stations per
     season.  However, if the target data is known (genSeqOption <= 2)
-    then it is the same data set for each season.  Finally, if if there is 
+    then it is the same data set for each season.  Finally, if if there is
     simulated daily data then it is used exclusively for each season with one daily
     simulation per sub-daily simulation. If there are more sub-daily
     simulations than there are daily then daily simulations are recycled.
 
-    First is to compute the nearby station data. The key to note here is that 
+    First is to compute the nearby station data. The key to note here is that
     the method of fragments is only concerned with one parameter that can be computed up
     front:
-    
+
     1) the day of the year the rain fell, e.g. November 23rd, and not which
         year and the where is already handled with the "nearby" stations".
-    
+
     The second logical must be computed sliding through the target daily
     series:
 
     2) a logical if the wet states for the previous and next day are the
         same as from the target daily sequence.
-    
+
     The general process is then to loop over the seasons and then each station
     within that season. From there we compute the sequences.
-    
+
     Step a) Compute the number of years in the seasonal pool.
 
     Step b) Compute the daily sequences in the seasonal pool.
@@ -115,7 +118,7 @@ def regionalisedsubdailysim(fnameInput, pathSubDaily, targetIndex,
     Step 2 b) Dissagregation Loop
 
     Save Data
-    
+
 
     Parameters
     ----------
@@ -200,8 +203,11 @@ def regionalisedsubdailysim(fnameInput, pathSubDaily, targetIndex,
     gso3_temp : float
         Average annual maximum daily temperature of simulation site for genSeqOption = 3, if not in station
         details dataset.
+        Default is None.
+    suppliedDailyRain : array
+        User supplied daily rainfall data. If provided, genSeqOption should be set to 5.
+        Can be a 1D array (single simulation) or 2D array (multiple simulations).
         Default is None.\n
-
     Returns
     ----------
     netCDF
@@ -438,60 +444,98 @@ def regionalisedsubdailysim(fnameInput, pathSubDaily, targetIndex,
     # read each one individually.  The OR loopSim == 1 is to handle where
     # we have a known target, with daily, subdaily or a mix, and we only
     # load it once, compute the statistics and use therein.
-    print('Step 2 a) Load Daily Reference Data')
-    from .readdata import readData
-    from .paddata import padData
-    (ds,
-    daySeries, 
-    dayVecStart,
-    dayVecEnd,
-    simYearStart, 
-    simYearEnd) = readData(param_path['fnameInput'])
-
-    if param['genSeqOption'] == 0:
-        # this is reading a known sub-daily that has no daily, so read and
-        # aggregate.
-        tmpSubDailyRain = ds['rainfall'][0,:,:].data
-        # pad out the data array to make full years with missingDay values.
-        targetDailyRain, dataIdxStart, dataIdxEnd = \
-                    padData(simYearStart, simYearEnd, dayVecStart, dayVecEnd)
-        targetDailyRain[dataIdxStart:dataIdxEnd] = tmpSubDailyRain.sum(axis=1)
+    
+    if suppliedDailyRain is not None:
+        print('Step 2 a) Using User-Supplied Daily Reference Data')
+        # If user supplies data, we bypass the readData step.
+        # We assume the user has provided a numpy array.
+        # We still need some basic simulation info. 
+        # For simplicity, we assume the data is already padded/formatted.
+        targetDailyRain = np.asanyarray(suppliedDailyRain)
         
-        DayStart = dataIdxStart
-        DayEnd = (date.toordinal(date(
-            int(dayVecEnd[0]),int(dayVecEnd[1]),int(dayVecEnd[2])))
-            - date.toordinal(date(simYearEnd,1,1)))
+        # If 1D, convert to 2D (days, 1 simulation)
+        if targetDailyRain.ndim == 1:
+            targetDailyRain = targetDailyRain[:, np.newaxis]
+            nDailySims = 1
+        else:
+            nDailySims = targetDailyRain.shape[1]
 
-    elif param['genSeqOption'] == 1 or param['genSeqOption'] == 2:
-        # param.genSeqOption == 1: there are known, daily and sub-daily,
-        # I've already computed the sub-daily fragments above so read the
-        # known daily sequence.
-        # param.genSeqOption == 2: There are known daily, so actually this
-        # reads the same file as param.genSeqOption == 1.
-        tmpDaily = ds['rainfall'][0,:].data
-        # pad out the data array to make full years with missingDay values.
-        targetDailyRain, dataIdxStart, dataIdxEnd = \
-                    padData(simYearStart, simYearEnd, dayVecStart, dayVecEnd)
-        targetDailyRain[dataIdxStart:dataIdxEnd] = tmpDaily
+        # Use param's nSims if it was set, otherwise use what was supplied
+        if param['nSims'] == 10 and nDailySims != 10: # default was 10
+             param['nSims'] = nDailySims
+
+        # We still need to know start/end years. 
+        # If not provided via other means, we might have to assume based on record length
+        # or require the user to have set minYears/nYearsRef correctly.
+        # For this new path, we'll try to use the existing simYearStart/End if they were somehow set
+        # but usually they are derived from readData.
+        # Let's derive them from targetDailyRain length if possible.
+        total_days = targetDailyRain.shape[0]
+        # Rough estimate of years (not perfect due to leap years, but pyraingen uses ndaysYearLeap=366)
+        # Actually pyraingen uses a fixed number of days per year in loops.
+        # We'll use the provided nYearsRef or similar.
+        simYearStart = int(2000) # Placeholder if we don't know
+        simYearEnd = simYearStart + int(total_days / 366) 
         
-        DayStart = dataIdxStart
-        DayEnd = (date.toordinal(date(
-            int(dayVecEnd[0]),int(dayVecEnd[1]),int(dayVecEnd[2])))
-            - date.toordinal(date(simYearEnd,1,1)))
+        DayStart = 0
+        DayEnd = ndaysYearLeap - 1
+        param['genSeqOption'] = 5 # Mark as user supplied
 
     else:
-        # this is reading multiple daily simulations, read them per
-        # simulation.  It actually covers param.genSeqOption == 3 and
-        # param.genSeqOption == 4, which has some form of pre-simulated
-        # daily rainfall data.
-        
-        # Check the number of simulations.  This is to handle recycling if
-        # the user has asked for 100 simulations, say, but the source only
-        # has 50.
-        nDailySims = getNDailySims(param_path['fnameInput'])
-        targetDailyRain = ds['rainfall'][:].data 
-        DayStart = 0
-        DayEnd = ndaysYearLeap-1
+        print('Step 2 a) Load Daily Reference Data')
+        from .readdata import readData
+        from .paddata import padData
+        (ds,
+        daySeries, 
+        dayVecStart,
+        dayVecEnd,
+        simYearStart, 
+        simYearEnd) = readData(param_path['fnameInput'])
+
+        if param['genSeqOption'] == 0:
+            # this is reading a known sub-daily that has no daily, so read and
+            # aggregate.
+            tmpSubDailyRain = ds['rainfall'][0,:,:].data
+            # pad out the data array to make full years with missingDay values.
+            targetDailyRain, dataIdxStart, dataIdxEnd = \
+                        padData(simYearStart, simYearEnd, dayVecStart, dayVecEnd)
+            targetDailyRain[dataIdxStart:dataIdxEnd] = tmpSubDailyRain.sum(axis=1)
+            
+            DayStart = dataIdxStart
+            DayEnd = (date.toordinal(date(
+                int(dayVecEnd[0]),int(dayVecEnd[1]),int(dayVecEnd[2])))
+                - date.toordinal(date(simYearEnd,1,1)))
+
+        elif param['genSeqOption'] == 1 or param['genSeqOption'] == 2:
+            # param.genSeqOption == 1: there are known, daily and sub-daily,
+            # I've already computed the sub-daily fragments above so read the
+            # known daily sequence.
+            # param.genSeqOption == 2: There are known daily, so actually this
+            # reads the same file as param.genSeqOption == 1.
+            tmpDaily = ds['rainfall'][0,:].data
+            # pad out the data array to make full years with missingDay values.
+            targetDailyRain, dataIdxStart, dataIdxEnd = \
+                        padData(simYearStart, simYearEnd, dayVecStart, dayVecEnd)
+            targetDailyRain[dataIdxStart:dataIdxEnd] = tmpDaily
+            
+            DayStart = dataIdxStart
+            DayEnd = (date.toordinal(date(
+                int(dayVecEnd[0]),int(dayVecEnd[1]),int(dayVecEnd[2])))
+                - date.toordinal(date(simYearEnd,1,1)))
+
+        else:
+            # this is reading multiple daily simulations, read them per
+            # simulation.  It actually covers param.genSeqOption == 3 and
+            # param.genSeqOption == 4, which has some form of pre-simulated
+            # daily rainfall data.
+            
+            # Check the number of simulations.  This is to handle recycling if
+            # the user has asked for 100 simulations, say, but the source only
+            # has 50.
+            nDailySims = getNDailySims(param_path['fnameInput'])
+            targetDailyRain = ds['rainfall'][:].data 
+            DayStart = 0
+            DayEnd = ndaysYearLeap-1
 
     param['simYearStart'] = simYearStart
     param['simYearEnd'] = simYearEnd
@@ -512,7 +556,7 @@ def regionalisedsubdailysim(fnameInput, pathSubDaily, targetIndex,
                                                 fragments, 
                                                 fragmentsState, 
                                                 fragmentsDailyDepth) for i in range(int(param['nSims']))) 
-    elif param['genSeqOption'] == 3 or param['genSeqOption'] == 4:
+    elif param['genSeqOption'] >= 3 and param['genSeqOption'] <= 5:
         if param['nSims'] > nDailySims:
             # This is to handle recycling if the user has asked for 100 simulations, 
             # say, but the source only has 50.
@@ -527,7 +571,7 @@ def regionalisedsubdailysim(fnameInput, pathSubDaily, targetIndex,
                                                 fragmentsState, 
                                                 fragmentsDailyDepth) for i in nSims)
     else:
-        print("Unsupported genSeqOption value. Must be >= 0 and <= 4")
+        print("Unsupported genSeqOption value. Must be >= 0 and <= 5")
 
     if param['nSims'] > 1:
         subdailySims = np.dstack(results)

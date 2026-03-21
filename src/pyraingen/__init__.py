@@ -1,3 +1,7 @@
 # read version from installed package
-from importlib.metadata import version
-__version__ = version("pyraingen")
+from importlib.metadata import version, PackageNotFoundError
+
+try:
+    __version__ = version("pyraingen")
+except PackageNotFoundError:
+    __version__ = "unknown"

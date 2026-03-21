@@ -28,17 +28,11 @@ def aggregateRainfall(rainfallSeries, nRecordsToAggregate):
     nRecordsPerDay = 240
     nRecordsToAggregate = int(nRecordsToAggregate)
 
-    rainfallAggregated = np.zeros((np.size(rainfallSeries, axis=0),
-                                    np.size(rainfallSeries, axis=1),
-                                    int(nRecordsPerDay/nRecordsToAggregate)))
+    # Use idiomatic numpy reshaping and summing along a new axis instead of manual loops.
+    nSims, nDays, totalRecords = rainfallSeries.shape
+    newRecords = totalRecords // nRecordsToAggregate
     
-    # Now, loop through the day and sum up
-    loopCounter = 0
-    for loopAggregate in np.arange(0,nRecordsPerDay, nRecordsToAggregate):
-        rainfallAggregated[:, :, loopCounter] = (
-            np.sum(rainfallSeries[:,:,loopAggregate:loopAggregate+nRecordsToAggregate], axis=2)
-        )
-        loopCounter = loopCounter + 1
+    rainfallAggregated = rainfallSeries.reshape(nSims, nDays, newRecords, nRecordsToAggregate).sum(axis=3)
 
     return rainfallAggregated
 
