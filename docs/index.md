@@ -7,6 +7,7 @@
 
 example.ipynb
 silo_example.ipynb
+darling_downs_worked_example.ipynb
 changelog.md
 contributing.md
 conduct.md
