@@ -29,6 +29,24 @@ def getSeasonFromDay(dayOfYear, nDaysCurrYear):
     #   Caleb Dykman
     #   2021-09-16
 
+    ## Indexing convention
+    #   dayOfYear is a 1-indexed calendar day number: Jan 1 == 1, Dec 31 == 365
+    #   or 366.  It is NOT a 0-indexed array subscript.  Callers must add 1 to
+    #   a 0-indexed loop variable before passing it here, e.g.
+    #       getSeasonFromDay(loopDay + 1, nDaysCurrYear)
+    #
+    #   Season boundary dates (Southern Hemisphere):
+    #     Non-leap year (365 days):
+    #       Summer  : day >= 355 (21 Dec) or day <= 59  (28 Feb)
+    #       Autumn  : day >= 60  (01 Mar) and day <= 151 (31 May)
+    #       Winter  : day >= 152 (01 Jun) and day <= 243 (31 Aug)
+    #       Spring  : day >= 244 (01 Sep) and day <= 354 (20 Dec)
+    #     Leap year (366 days):
+    #       Summer  : day >= 355 (21 Dec) or day <= 60  (29 Feb)
+    #       Autumn  : day >= 61  (01 Mar) and day <= 152 (31 May)
+    #       Winter  : day >= 153 (01 Jun) and day <= 244 (31 Aug)
+    #       Spring  : day >= 245 (01 Sep) and day <= 354 (20 Dec)
+
     ## Algorithm
     #   1) decide if this is a leap year.
     #   2) compute which month we are in.

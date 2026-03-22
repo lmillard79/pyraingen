@@ -60,15 +60,38 @@ def get_season(month):
 
 
 class DailyRainfallSimulator:
+    """Pure-Python port of the Fortran daily rainfall simulator.
+
+    Note: This class is not yet functional.  The subroutine translation
+    (smoothprob, psimmain, rf_amt_gen) is in progress as part of the
+    Fortran removal roadmap.  Calling run_simulation will raise
+    NotImplementedError until the port is complete.
+
+    In the meantime, use one of the following approaches:
+      - genSeqOption=5 with suppliedDailyRain to supply your own daily data.
+      - Fetch historical daily data from SILO via pyraingen.silo and pass it
+        as suppliedDailyRain.
+    """
+
     def __init__(self, rain_threshold=0.30):
         self.rain_threshold = rain_threshold
-        
+
     def run_simulation(self, n_sims, n_years, start_year, nearby_data):
+        """Main entry point for daily simulation.
+
+        Parameters
+        ----------
+        n_sims : int
+            Number of simulations to generate.
+        n_years : int
+            Length of each simulation in years.
+        start_year : int
+            Calendar year for the start of the simulation.
+        nearby_data : list
+            Historical data for nearby stations.
         """
-        Main entry point for daily simulation.
-        nearby_data: list of dicts/arrays containing historical data for nearby stations.
-        """
-        # 1. Pre-process historical data (smoothprob, etc.)
-        # 2. Run simulation loop (simulate)
-        # 3. Return results
-        pass
+        raise NotImplementedError(
+            "The pure-Python daily rainfall simulator is not yet complete. "
+            "Use genSeqOption=5 with the suppliedDailyRain parameter, or "
+            "fetch historical daily data from SILO via pyraingen.silo."
+        )

@@ -144,11 +144,20 @@ def ifdcond(fileNameInput, fileNameOutput, fileNameTargetIFD,
     # Vector of years we are simulating over:
     years = np.arange(yearStart, yearEnd+1, 1)
 
-    #Check
-    if Freq.min() < 1/(len(years)+1)*100:
-        warnings.warn('''Can only constrain to recurrence intervals 
-        that would be present in the length of the record. Check no. 
-        of years and defined frequencies.''')
+    # Check that the requested return periods are representable given the
+    # record length.  An AEP smaller than 1/(N+1)*100 % cannot be estimated
+    # from N years of data and the conditioning will produce meaningless
+    # results.  Raise an error rather than continuing silently.
+    min_feasible_aep = 1 / (len(years) + 1) * 100
+    if Freq.min() < min_feasible_aep:
+        raise ValueError(
+            f'Cannot constrain to the requested minimum AEP of {Freq.min():.2f}% '
+            f'with only {len(years)} years of record. '
+            f'The minimum feasible AEP for this record length is '
+            f'{min_feasible_aep:.2f}%. '
+            'Either increase the record length, reduce the number of simulation '
+            'years, or remove the low-AEP entries from the AEP list.'
+        )
 
     # Allocate some space to store the objective function results:
     objectiveResults = np.zeros((

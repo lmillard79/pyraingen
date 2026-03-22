@@ -30,12 +30,15 @@
 #cls()
 
 # Packages & Libraries
+import logging
 import numpy as np
 import random
 from datetime import date
 from numba.core import types
 from numba.typed import Dict
 from importlib import resources
+
+logger = logging.getLogger(__name__)
 
 # Defined Functions
 from .loadsubdailystationmeta import loadSubDailyStationMeta
@@ -57,7 +60,8 @@ def regionalisedsubdailysim(fnameInput, pathSubDaily, targetIndex,
                             absDiffTol=0.1, gso3_lat=None, gso3_lon=None,
                             gso3_elev=None, gso3_distcoast=None,
                             gso3_anrf=None, gso3_temp=None,
-                            suppliedDailyRain=None):
+                            suppliedDailyRain=None,
+                            suppliedSimYearStart=None):
     """Front end to the regionalised sub-daily disaggregation code.
 
     Options (genSeqOption) included:\n
@@ -207,14 +211,21 @@ def regionalisedsubdailysim(fnameInput, pathSubDaily, targetIndex,
     suppliedDailyRain : array
         User supplied daily rainfall data. If provided, genSeqOption should be set to 5.
         Can be a 1D array (single simulation) or 2D array (multiple simulations).
-        Default is None.\n
+        Default is None.
+    suppliedSimYearStart : int, optional
+        Calendar year that the first day of suppliedDailyRain corresponds to.
+        Required when using genSeqOption=5 to correctly assign seasons and
+        produce a dated output NetCDF.  If not provided the simulation will
+        default to starting in year 2000, which is only valid when the supplied
+        data begins on 1 January 2000.
+        Default is None (falls back to 2000).\n
     Returns
     ----------
     netCDF
         Saves netCDF of disaggregated sub-daily simulations
         to specified file path.
     """
-    print('Initialising...')
+    logger.info('Initialising...')
     # Set the random seed:
     # Python uses the Mersenne Twister as the core generator.
     # current system time is used
@@ -394,7 +405,7 @@ def regionalisedsubdailysim(fnameInput, pathSubDaily, targetIndex,
     # Step a) loop over the stations and compute the number of years in the
     # pool:
 
-    print('Step 1(a) looping over stations and computing number of years')
+    logger.info('Step 1(a): looping over stations and computing number of years')
     from .numberofyears import numberOfYears
     nYearsPool = numberOfYears(nSeasons, stnDetails, nearStationIdx, param_path)
 
@@ -409,7 +420,7 @@ def regionalisedsubdailysim(fnameInput, pathSubDaily, targetIndex,
     #   2 == next day
     # See the symbolic constants
 
-    print('Step 1(b) Compute daily sequences')
+    logger.info('Step 1(b): computing daily sequences')
     from .dailysequences import dailySequences
     dailyDepth, dailyWetState = dailySequences(nSeasons, nYearsPool, stnDetails, 
                                             nearStationIdx, param, param_path)
@@ -418,7 +429,7 @@ def regionalisedsubdailysim(fnameInput, pathSubDaily, targetIndex,
     # For this computation a "good day" is one that is not of state bad and has
     # a depth greater than param['dryWetCutoff'].
 
-    print('Step 1(c) Compute maximum number of good days per year day per season')
+    logger.info('Step 1(c): computing maximum number of good days per year day per season')
     from .maxgooddays import maxGoodDays
     nGoodDays = maxGoodDays(nSeasons, nYearsPool, dailyWetState, dailyDepth, param)
 
@@ -426,7 +437,7 @@ def regionalisedsubdailysim(fnameInput, pathSubDaily, targetIndex,
     # wetstate != 0 (i.e. some possibly good data).  This does involve looping
     # over the stations again.
 
-    print('Step 1(d) load and store only possibly good fragments')
+    logger.info('Step 1(d): loading and storing possibly good fragments')
     from .getfragments import getFragments
     fragments, fragmentsState, fragmentsDailyDepth = getFragments(nSeasons, 
                                                         nGoodDays, dailyWetState, 
@@ -446,13 +457,9 @@ def regionalisedsubdailysim(fnameInput, pathSubDaily, targetIndex,
     # load it once, compute the statistics and use therein.
     
     if suppliedDailyRain is not None:
-        print('Step 2 a) Using User-Supplied Daily Reference Data')
-        # If user supplies data, we bypass the readData step.
-        # We assume the user has provided a numpy array.
-        # We still need some basic simulation info. 
-        # For simplicity, we assume the data is already padded/formatted.
+        logger.info('Step 2 a) Using user-supplied daily reference data')
         targetDailyRain = np.asanyarray(suppliedDailyRain)
-        
+
         # If 1D, convert to 2D (days, 1 simulation)
         if targetDailyRain.ndim == 1:
             targetDailyRain = targetDailyRain[:, np.newaxis]
@@ -460,29 +467,32 @@ def regionalisedsubdailysim(fnameInput, pathSubDaily, targetIndex,
         else:
             nDailySims = targetDailyRain.shape[1]
 
-        # Use param's nSims if it was set, otherwise use what was supplied
-        if param['nSims'] == 10 and nDailySims != 10: # default was 10
-             param['nSims'] = nDailySims
+        # Use the number of supplied simulations if the caller left nSims at
+        # its default of 10 but did not actually supply 10 simulations.
+        if param['nSims'] == 10 and nDailySims != 10:
+            param['nSims'] = nDailySims
 
-        # We still need to know start/end years. 
-        # If not provided via other means, we might have to assume based on record length
-        # or require the user to have set minYears/nYearsRef correctly.
-        # For this new path, we'll try to use the existing simYearStart/End if they were somehow set
-        # but usually they are derived from readData.
-        # Let's derive them from targetDailyRain length if possible.
+        # Derive start/end years from the record length.  Use 365.25 days/year
+        # to correctly handle the mix of leap and non-leap years rather than
+        # the previous hard-coded 366 which under-counted years by ~0.3%.
         total_days = targetDailyRain.shape[0]
-        # Rough estimate of years (not perfect due to leap years, but pyraingen uses ndaysYearLeap=366)
-        # Actually pyraingen uses a fixed number of days per year in loops.
-        # We'll use the provided nYearsRef or similar.
-        simYearStart = int(2000) # Placeholder if we don't know
-        simYearEnd = simYearStart + int(total_days / 366) 
-        
+        if suppliedSimYearStart is not None:
+            simYearStart = int(suppliedSimYearStart)
+        else:
+            simYearStart = 2000
+            logger.warning(
+                'suppliedSimYearStart not provided; assuming simulation starts '
+                'in year 2000.  Pass suppliedSimYearStart=<year> to suppress '
+                'this warning and ensure correct seasonal assignment.'
+            )
+        simYearEnd = simYearStart + int(round(total_days / 365.25)) - 1
+
         DayStart = 0
         DayEnd = ndaysYearLeap - 1
-        param['genSeqOption'] = 5 # Mark as user supplied
+        param['genSeqOption'] = 5  # Mark as user-supplied
 
     else:
-        print('Step 2 a) Load Daily Reference Data')
+        logger.info('Step 2(a): loading daily reference data')
         from .readdata import readData
         from .paddata import padData
         (ds,
@@ -542,8 +552,8 @@ def regionalisedsubdailysim(fnameInput, pathSubDaily, targetIndex,
     param['DayStart'] = DayStart
     param['DayEnd'] = DayEnd
 
-    ## Step 2 b) Dissagregation Loop
-    print('Step 2 b) Performing subdaily disaggregation')
+    ## Step 2 b) Disaggregation Loop
+    logger.info('Step 2(b): performing sub-daily disaggregation')
     # from .subdailysimloop0 import subDailySimLoop0
     # from .subdailysimloop1 import subDailySimLoop1
     from joblib import Parallel, delayed
@@ -571,14 +581,17 @@ def regionalisedsubdailysim(fnameInput, pathSubDaily, targetIndex,
                                                 fragmentsState, 
                                                 fragmentsDailyDepth) for i in nSims)
     else:
-        print("Unsupported genSeqOption value. Must be >= 0 and <= 5")
+        raise ValueError(
+            f"Unsupported genSeqOption={int(param['genSeqOption'])}. "
+            "Valid options are 0 through 5."
+        )
 
     if param['nSims'] > 1:
         subdailySims = np.dstack(results)
     else:
         subdailySims = results
 
-    print('Saving data')
+    logger.info('Saving data')
     jdStart = datevecToJD(date(int(simYearStart), 1, 1))
     simJDSeries  = np.arange(0,np.size(subdailySims, axis=1),1)+ jdStart
     produceSubDailyNetCDF(param_path['fnameSubDaily'],subdailySims ,simJDSeries)

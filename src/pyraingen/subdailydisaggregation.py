@@ -155,7 +155,9 @@ def subDailyDisaggregation(targetDailyRain, param,
             todaysRain = workingDailyDepth[today]
 
             # 2) Get the Season
-            todaysSeason = int(getSeasonFromDay(loopDay+1, nDaysCurrYear))
+            # loopDay is 0-indexed (0 == Jan 1).  getSeasonFromDay expects a
+            # 1-indexed calendar day number, so add 1 to convert.
+            todaysSeason = int(getSeasonFromDay(loopDay + 1, nDaysCurrYear))
 
             # 3) Window Search
             # Compute the indices of the moving window into the year days and

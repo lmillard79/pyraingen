@@ -1,9 +1,11 @@
 # Packages & Libraries
+import logging
 import numpy as np
 import netCDF4 as nc
 from datetime import date
-import matplotlib.pyplot as plt
 from numba.typed import List
+
+logger = logging.getLogger(__name__)
 #import nvtx
 
 # Defined Functions
@@ -107,8 +109,10 @@ def getFragments(nSeasons, nGoodDays, dailyWetState, dailyDepth, stnDetails, nea
                     int(dayVecEnd[0]),int(dayVecEnd[1]),int(dayVecEnd[2])))
                     - date.toordinal(date(yearStart,1,1))+1)
 
-                tmpSubDaily = np.ones((nDaysKnown, recordsPerDay,)) * missingDay #dimensions flipped
-                tmpSubDaily[dataIdxStart:dataIdxEnd, :] = ds['rainfall'][:].data/10 #
+                tmpSubDaily = np.ones((nDaysKnown, recordsPerDay)) * missingDay
+                # Pluviograph NetCDF files store rainfall in tenths of a
+                # millimetre.  Divide by 10 to convert to millimetres.
+                tmpSubDaily[dataIdxStart:dataIdxEnd, :] = ds['rainfall'][:].data / 10
                 
                 # This is the index into the days dimension of tmpSubDaily
                 idxDayLinear = 0
@@ -134,15 +138,22 @@ def getFragments(nSeasons, nGoodDays, dailyWetState, dailyDepth, stnDetails, nea
                             fragmentsDailyDepth[loopSeason][loopDay,int(fragmentCounter[loopDay])]= \
                                 dailyDepth[loopSeason][loopDay,idxYear]
 
-                            # Sanity Check:
-                            if (abs(np.sum((
-                                fragments[loopSeason][loopDay,int(fragmentCounter[loopDay]),:]))
-                                - dailyDepth[loopSeason][loopDay,idxYear]) > 1):
-                                
-                                plt.plot((
-                                fragments[loopSeason][loopDay,int(fragmentCounter[loopDay]),:]
-                                ))
-                                raise ValueError('Sum fail')
+                            # Sanity check: the sum of the sub-daily fragment
+                            # must match the daily total to within 1 mm.  A
+                            # larger discrepancy indicates a unit conversion
+                            # error or a corrupt record.
+                            fragSum = np.sum(
+                                fragments[loopSeason][loopDay, int(fragmentCounter[loopDay]), :]
+                            )
+                            dailyTotal = dailyDepth[loopSeason][loopDay, idxYear]
+                            if abs(fragSum - dailyTotal) > 1:
+                                raise ValueError(
+                                    f'Fragment sum ({fragSum:.2f} mm) does not match '
+                                    f'daily total ({dailyTotal:.2f} mm) for season '
+                                    f'{loopSeason}, day {loopDay}, year index {idxYear}. '
+                                    'Check the /10 unit conversion against the source '
+                                    'NetCDF units attribute.'
+                                )
                             fragmentCounter[loopDay] += 1
                         idxDayLinear += 1
                     idxYear += 1

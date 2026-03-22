@@ -48,11 +48,21 @@ def targetStations(param, param_path, genSeqOption3, stnDetails):
     # read additional data from our genSeqOption3 data to become our
     # reference.
     if param['targetIndex'] in stnDetails['stnIndex']:
-        idxTarget = np.where(stnDetails['stnIndex'] == param['targetIndex'])
+        # Extract a plain integer index so that downstream comparisons
+        # (e.g. loopStation != idxTarget) work correctly.  np.where returns a
+        # tuple of arrays; without unwrapping it, the comparison against a
+        # plain integer is always True and the target station would never be
+        # excluded from the logistic regression predictor.
+        idxTarget = int(np.where(stnDetails['stnIndex'] == param['targetIndex'])[0][0])
     else:
+        # The target is a new site not in the reference dataset.  Record its
+        # position in the arrays (before the append) so that idxTarget is a
+        # plain integer index consistent with the found-station branch above.
         idxTarget = np.size(stnDetails['stnIndex'], axis=0)
-        #assuming all arrays are of same length so indicies match
-        stnDetails['stnIndex']     = np.append(stnDetails['stnIndex'], idxTarget)
+        # Append the actual station ID, not the array index.  Using idxTarget
+        # here would write an array position into the station-ID column and
+        # produce wrong NetCDF filenames downstream.
+        stnDetails['stnIndex']     = np.append(stnDetails['stnIndex'], param['targetIndex'])
         stnDetails['stnLat']       = np.append(stnDetails['stnLat'], genSeqOption3['lat'])
         stnDetails['stnLon']       = np.append(stnDetails['stnLon'], genSeqOption3['lon'])
         stnDetails['stnElevation'] = np.append(stnDetails['stnElevation'], genSeqOption3['elevation'])
