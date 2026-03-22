@@ -52,7 +52,6 @@ Interested in contributing? Check out the contributing guidelines. Please note t
 
 `pyraingen` is an open-science initiative developed through the collaboration of:
 
-*   **WRM Water & Environment**: Primary development, refactoring, and application in the Darling Downs Flood Study.
 *   **Bureau of Meteorology (BoM)**: Provision of foundational historical climate data and IFD design standards.
 *   **University of New South Wales (UNSW)**: Original research and stochastic methodology.
 
