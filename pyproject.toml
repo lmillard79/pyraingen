@@ -2,8 +2,8 @@
 name = "pyraingen"
 version = "1.0.2"
 description = "A package for stochastically generating daily and subdaily rainfall in Australia with ifd constraining."
-authors = ["Caleb Dykman"]
-license = "None"
+authors = ["The pyraingen Contributors", "WRM Water & Environment", "Bureau of Meteorology", "UNSW"]
+license = "CC-BY-4.0"
 readme = "README.md"
 
 [tool.poetry.dependencies]

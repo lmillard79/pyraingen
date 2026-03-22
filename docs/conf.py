@@ -7,8 +7,8 @@
 # -- Project information -----------------------------------------------------
 
 project = u"pyraingen"
-copyright = u"2022, Caleb Dykman"
-author = u"Caleb Dykman"
+copyright = u"2022-2026, The pyraingen Contributors"
+author = u"The pyraingen Contributors"
 
 # -- General configuration ---------------------------------------------------
 
